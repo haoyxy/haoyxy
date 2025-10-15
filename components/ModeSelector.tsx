@@ -10,31 +10,31 @@ const ModeCard: React.FC<{
   mode: AnalysisMode;
   title: string;
   description: string;
-  // FIX: Use React.ReactElement instead of JSX.Element to resolve namespace issue.
   icon: React.ReactElement;
   onClick: (mode: AnalysisMode) => void;
   className?: string;
 }> = ({ mode, title, description, icon, onClick, className }) => (
   <div
-    className={`bg-slate-900/50 p-8 rounded-xl border border-cyan-500/20 shadow-lg hover:shadow-cyan-500/10 hover:border-cyan-500/50 transition-all duration-300 flex flex-col items-center text-center cursor-pointer group ${className}`}
+    className={`main-card p-8 rounded-xl border border-transparent hover:border-cyan-400/80 shadow-lg hover:shadow-cyan-500/20 transition-all duration-300 flex flex-col items-center text-center cursor-pointer group relative overflow-hidden ${className}`}
     onClick={() => onClick(mode)}
   >
-    <div className="mb-6 text-cyan-400 group-hover:text-cyan-300 transition-colors duration-300">
+    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-cyan-500/0 via-cyan-500/0 to-cyan-500/15 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+    <div className="mb-6 text-cyan-400 group-hover:text-cyan-300 transition-all duration-300 transform group-hover:scale-110">
       {icon}
     </div>
-    <h3 className="text-2xl font-bold text-slate-100 mb-3">{title}</h3>
-    <p className="text-slate-400 mb-6 flex-grow">{description}</p>
-    <button className="mt-auto w-full px-8 py-3 bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold rounded-lg shadow-lg hover:shadow-cyan-500/20 transform group-hover:-translate-y-1 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-cyan-300/50 text-lg">
+    <h3 className="text-2xl font-bold text-slate-100 mb-3 z-10">{title}</h3>
+    <p className="text-slate-400 mb-6 flex-grow z-10">{description}</p>
+    <div className="mt-auto w-full px-8 py-3 bg-slate-700/50 group-hover:bg-cyan-600/80 text-white font-bold rounded-lg shadow-lg group-hover:shadow-cyan-500/20 transform group-hover:-translate-y-1 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-cyan-300/50 text-lg z-10">
       选择此模式
-    </button>
+    </div>
   </div>
 );
 
 const SectionDivider: React.FC<{ title: string }> = ({ title }) => (
-    <div className="flex items-center w-full my-6">
-        <div className="flex-grow border-t border-cyan-500/20"></div>
-        <span className="flex-shrink mx-4 text-slate-400 font-semibold">{title}</span>
-        <div className="flex-grow border-t border-cyan-500/20"></div>
+    <div className="flex items-center w-full my-8" aria-hidden="true">
+        <div className="flex-grow border-t border-slate-700/80"></div>
+        <span className="flex-shrink mx-4 text-slate-500 font-bold text-sm tracking-wider uppercase">{title}</span>
+        <div className="flex-grow border-t border-slate-700/80"></div>
     </div>
 );
 

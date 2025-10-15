@@ -47,24 +47,29 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
         )}
       </div>
       {state.fileName && <p className="text-xl font-semibold text-center text-slate-300">正在分析: <span className="font-bold text-cyan-400">{state.fileName}</span> ({state.analysisMode === 'opening' ? '开篇评估' : '全本精析'})</p>}
+      
       {isProcessing && progress.total > 0 && (
-        <div className="space-y-3 pt-2">
-          <ProgressBar progress={progress.percentage} />
-          <div className="flex justify-between items-center text-sm text-slate-400 font-medium px-1">
-            <span className="font-bold">总进度: {progress.current} / {progress.total}</span>
-            {estimatedTimeRemaining && state.appStatus === AppOverallStatus.ANALYZING_CHUNKS && (
-              <span className="font-semibold text-cyan-400">预计剩余: {estimatedTimeRemaining}</span>
-            )}
-          </div>
+        <div className="space-y-4 pt-2 main-card p-4 rounded-lg">
+            <div className="flex justify-between items-center text-md text-slate-300 font-medium px-1">
+                <span className="font-bold">总进度</span>
+                {estimatedTimeRemaining && state.appStatus === AppOverallStatus.ANALYZING_CHUNKS && (
+                  <span className="font-semibold text-cyan-400 animate-pulse">预计剩余: {estimatedTimeRemaining}</span>
+                )}
+            </div>
+            <ProgressBar progress={progress.percentage} />
+            <p className="text-center text-slate-400 text-2xl font-mono tracking-wider">{progress.current} / {progress.total}</p>
         </div>
       )}
+      
       <StatusDisplay
         status={state.appStatus}
         currentChunk={state.currentProcessingChunkOrder + 1}
         totalChunks={state.totalChunksToProcess}
         analysisMode={state.analysisMode}
       />
+      
       {state.error && <ErrorDisplay message={state.error} onClear={onClearError} />}
+      
       {state.totalChunksToProcess > 0 && state.appStatus === AppOverallStatus.ANALYZING_CHUNKS && (
         <ApiLimitWarning
           totalChunks={state.totalChunksToProcess - state.currentProcessingChunkOrder}
@@ -72,11 +77,13 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
           interChunkDelaySeconds={(state.analysisMode === "opening" ? INTER_CHUNK_API_DELAY_MS_OPENING : INTER_CHUNK_API_DELAY_MS_FULL) / 1000}
         />
       )}
+
       <div className="space-y-3">
         {state.chunks.filter(c => c.status === ChunkStatus.ANALYZED || c.status === ChunkStatus.ERROR || c.status === ChunkStatus.ANALYZING || c.status === ChunkStatus.READING).sort((a, b) => b.order - a.order).map(chunk => (
           <ChunkItem key={chunk.id} chunk={chunk} />
         ))}
       </div>
+      
       {workerLogs.length > 0 && (
         <div className="mt-4 p-4 bg-slate-900/70 rounded-lg shadow-inner border border-cyan-500/10 max-h-60 overflow-y-auto">
           <h4 className="font-semibold text-slate-300 mb-2">文件处理日志：</h4>

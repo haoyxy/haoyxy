@@ -205,36 +205,49 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen py-8 sm:py-12">
-      <header className="mb-10 text-center px-4">
-        <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-cyan-400 via-teal-400 to-sky-500 bg-clip-text text-transparent pb-2">
+      <header className="mb-12 text-center px-4">
+        <div className="inline-block bg-slate-800/50 rounded-full px-4 py-1.5 mb-4 border border-cyan-500/20">
+            <p className="text-sm font-medium text-cyan-400">Powered by Gemini 2.5 Flash</p>
+        </div>
+        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold bg-gradient-to-r from-cyan-300 via-teal-300 to-sky-400 bg-clip-text text-transparent pb-2 tracking-tight title-shimmer">
           {APP_NAME}
         </h1>
-        <p className="text-slate-400 text-lg sm:text-xl max-w-3xl mx-auto mt-3">
+        <p className="text-slate-400 text-lg sm:text-xl max-w-3xl mx-auto mt-4">
           AI 驱动的网络小说深度拆解与评估工具。上传您的小说，洞悉其结构、节奏与潜力。
         </p>
       </header>
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
-         <div className="bg-slate-800/50 backdrop-blur-sm border border-cyan-500/20 rounded-2xl shadow-2xl p-6 sm:p-8">
+         <div className="main-card rounded-2xl p-6 sm:p-8">
             {!geminiAi && !initError && (
-                 <div className="p-4 bg-yellow-900/50 border border-yellow-400/30 rounded-lg text-center mb-6 flex items-center justify-center space-x-3">
+                 <div className="p-4 bg-yellow-500/10 border border-yellow-400/20 rounded-lg text-center mb-6 flex items-center justify-center space-x-3">
                     <Spinner size="sm" color="text-yellow-400"/>
                     <p className="text-yellow-300 font-semibold">正在初始化 AI 服务... 请稍候。</p>
                 </div>
             )}
             {geminiAi && state.appStatus === AppOverallStatus.IDLE && (
-                 <div className="p-4 bg-green-900/50 border-green-400/30 rounded-lg text-green-300 text-center mb-6 shadow-lg">
-                    AI 服务已就绪。请选择分析模式开始。
+                 <div className="p-4 bg-emerald-500/10 border border-emerald-400/20 rounded-lg text-emerald-300 text-center mb-6 shadow-lg flex items-center justify-center space-x-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span className="font-semibold">AI 服务已就绪。请选择分析模式开始。</span>
                 </div>
             )}
             {renderContent()}
          </div>
       </main>
-      <footer className="text-center mt-16 py-8 border-t border-cyan-500/10">
+      <footer className="text-center mt-16 py-8" style={{ borderTop: '1px solid', borderImage: 'linear-gradient(to right, transparent, var(--clr-cyan-500), transparent) 1' }}>
+        <div className="flex justify-center items-center space-x-2 mb-2 text-slate-500">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <p className="text-sm">
+                Developed by <strong className="font-semibold text-slate-400">haoyxy</strong>
+            </p>
+        </div>
         <p className="text-sm text-slate-500">
-          {APP_NAME} &copy; {new Date().getFullYear()}. 
-          Powered by Google Gemini API.
+          {APP_NAME} &copy; {new Date().getFullYear()}. Powered by Google Gemini API.
         </p>
-         <p className="text-xs text-slate-600 mt-1">
+         <p className="text-xs text-slate-600 mt-2">
             版本: {APP_PERSISTENCE_VERSION}
         </p>
       </footer>

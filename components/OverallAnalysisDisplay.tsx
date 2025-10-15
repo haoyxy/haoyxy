@@ -14,8 +14,8 @@ export const OverallAnalysisDisplay: React.FC<OverallAnalysisDisplayProps> = Rea
   const defaultExportFilename = fileNameForExport || `${title.replace(/\s+/g, '_')}_report.txt`;
 
   return (
-    <div className="p-6 sm:p-8 bg-slate-900/50 rounded-xl shadow-2xl border border-cyan-500/10">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-cyan-500/10 pb-4">
+    <div className="main-card p-6 sm:p-8 rounded-xl">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-slate-700/50 pb-4">
         <h2 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-sky-500 bg-clip-text text-transparent">
           {title} 
         </h2>
