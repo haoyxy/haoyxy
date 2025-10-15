@@ -1,7 +1,6 @@
-
 import { Chat } from "@google/genai";
 
-export type AnalysisMode = "opening" | "full";
+export type AnalysisMode = "opening" | "full" | "viability" | "chapter";
 
 export interface NovelChunk {
   id: string;
@@ -23,6 +22,38 @@ export enum ChunkStatus {
   ERROR = "ERROR",
 }
 
+export interface ViabilityReport {
+  noveltyScore: number;
+  noveltyAnalysis: string;
+  marketFitAnalysis: {
+    recommendedGenres: string[];
+    targetAudience: string;
+    marketPotential: string;
+  };
+  poisonPillWarning: {
+    warnings: Array<{
+      type: string;
+      description: string;
+      severity: "High" | "Medium" | "Low";
+    }>;
+    summary: string;
+  };
+  overallAssessment: string;
+}
+
+export interface ChapterReport {
+  effectivePlotProgressionRate: number; // 0-100
+  progressionAnalysis: string;
+  informationDensityIndex: number; // 1-10
+  densityAnalysis: string;
+  conflictClimaxDensity: number; // count
+  conflictAnalysis: string;
+  hookStrengthRating: "High" | "Medium" | "Low";
+  hookAnalysis: string;
+  overallAssessment: string;
+}
+
+
 export interface AppState {
   analysisMode: AnalysisMode | null;
   file: File | null; 
@@ -31,6 +62,8 @@ export interface AppState {
   currentChatInstance: Chat | null;
   openingAssessment: string | null; 
   fullNovelReport: string | null; 
+  viabilityReport: ViabilityReport | null;
+  chapterReport: ChapterReport | null;
   appStatus: AppOverallStatus;
   error: string | null;
   currentProcessingChunkOrder: number; 
@@ -45,6 +78,12 @@ export interface AppState {
 export enum AppOverallStatus {
   IDLE = "IDLE",
   MODE_SELECTED = "MODE_SELECTED",
+  AWAITING_VIABILITY_BRIEF = "AWAITING_VIABILITY_BRIEF",
+  ANALYZING_VIABILITY = "ANALYZING_VIABILITY",
+  VIABILITY_ANALYSIS_COMPLETED = "VIABILITY_ANALYSIS_COMPLETED",
+  AWAITING_CHAPTER_INPUT = "AWAITING_CHAPTER_INPUT",
+  ANALYZING_CHAPTER = "ANALYZING_CHAPTER",
+  CHAPTER_ANALYSIS_COMPLETED = "CHAPTER_ANALYSIS_COMPLETED",
   FILE_SELECTED = "FILE_SELECTED", 
   READING_CHUNKS = "READING_CHUNKS", 
   ANALYZING_CHUNKS = "ANALYZING_CHUNKS",

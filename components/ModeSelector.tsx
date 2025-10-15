@@ -30,14 +30,53 @@ const ModeCard: React.FC<{
   </div>
 );
 
+const SectionDivider: React.FC<{ title: string }> = ({ title }) => (
+    <div className="flex items-center w-full my-6">
+        <div className="flex-grow border-t border-cyan-500/20"></div>
+        <span className="flex-shrink mx-4 text-slate-400 font-semibold">{title}</span>
+        <div className="flex-grow border-t border-cyan-500/20"></div>
+    </div>
+);
+
 
 export const ModeSelector: React.FC<ModeSelectorProps> = ({ onModeSelect, workerLogs }) => {
   return (
     <div className="space-y-8">
       <div className="text-center">
         <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-sky-500 mb-2">选择分析模式</h2>
-        <p className="text-slate-400">您希望如何分析这本小说？</p>
+        <p className="text-slate-400">请选择您当前创作阶段所需的功能。</p>
       </div>
+      
+      <SectionDivider title="创作中期 (高频使用)" />
+      
+       <div className="grid grid-cols-1 gap-8">
+          <ModeCard
+              mode="chapter"
+              title="⚡ 章节质量量化评估"
+              description="粘贴单章节（2-5千字），AI将从剧情推进、信息密度、爽点冲突、结尾钩子四个维度进行量化打分和分析，助您快速判断章节质量，告别“水文”。"
+              icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>}
+              onClick={onModeSelect}
+          />
+      </div>
+
+      <SectionDivider title="创作前期" />
+      
+      <div className="grid grid-cols-1 gap-8">
+          <ModeCard
+              mode="viability"
+              title="💡 创意可行性分析"
+              description="输入您的核心创意或大纲，AI将分析其新颖度、市场匹配度，并预警潜在的“毒点”。在动笔前，为您的创意“把脉”。"
+              icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>}
+              onClick={onModeSelect}
+          />
+      </div>
+      
+      <SectionDivider title="创作后期 / 复盘" />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <ModeCard
             mode="opening"
@@ -54,6 +93,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ onModeSelect, worker
             onClick={onModeSelect}
         />
       </div>
+
        {workerLogs.length > 0 && (
         <div className="mt-4 p-4 bg-slate-900/70 rounded-lg shadow-inner border border-cyan-500/10 max-h-60 overflow-y-auto">
           <h4 className="font-semibold text-slate-300 mb-2">文件处理日志：</h4>

@@ -1,5 +1,5 @@
-import { GoogleGenAI, Chat, GenerateContentResponse, Content } from "@google/genai";
-import { ChunkAnalysisResponse } from '../../types';
+import { GoogleGenAI, Chat, GenerateContentResponse, Content, Type } from "@google/genai";
+import { ChunkAnalysisResponse, ViabilityReport, ChapterReport } from '../../types';
 import { GEMINI_TEXT_MODEL as APP_GEMINI_MODEL, MAX_CHUNKS_FOR_OPENING_ANALYSIS } from '../../constants';
 
 const callGeminiWithRetry = async (
@@ -512,4 +512,230 @@ ${allChunkSummaries}
     }
     throw error;
   }
+};
+
+
+export const analyzeCreativeViability = async (
+  ai: GoogleGenAI,
+  brief: string,
+): Promise<ViabilityReport> => {
+  const systemInstruction = `你是一位顶尖的网络小说市场分析师和资深编辑，拥有敏锐的市场洞察力和丰富的爆款作品孵化经验。你的任务是基于用户提供的核心创意简介或大纲，生成一份专业、客观、数据驱动的【创意可行性分析报告】。你的分析必须严格、精准，并为创作者提供有价值的决策参考。
+
+你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义。JSON 结构必须严格遵循预设的 schema。`;
+
+  const userMessage = `请根据以下小说创意简介/大纲，生成一份详细的【创意可行性分析报告】。
+
+--- 创意简介开始 ---
+${brief}
+--- 创意简介结束 ---
+
+请在报告中全面评估以下几个方面：
+
+1.  **新颖度评估 (noveltyScore, noveltyAnalysis)**：
+    *   给出一个 1-10 分的【新颖度评分】，1分表示极其陈旧套路，10分表示极具开创性。
+    *   在【新颖度分析】中，详细阐述评分理由。明确指出创意中的“亮点”（创新、独特的元素）和“陈旧元素”（常见、俗套的设定）。
+
+2.  **市场匹配度分析 (marketFitAnalysis)**：
+    *   【推荐题材分类】：根据创意内容，推荐 1-3 个最匹配的网文题材分类（如：都市、玄幻、科幻、历史、言情等）。
+    *   【目标读者画像】：详细描绘这篇小说最可能吸引的核心读者群体特征（如年龄、性别、阅读偏好、爽点需求等）。
+    *   【市场潜力预测】：基于当前网文市场趋势，对该创意的潜在市场体量和竞争力进行预测（如：蓝海赛道、红海市场但有差异化优势、小众精品、大众爆款潜力等）。
+
+3.  **潜在毒点预警 (poisonPillWarning)**：
+    *   【预警列表】：以列表形式，精准识别并指出设定中可能存在的、容易引起主流读者反感的“毒点”或“雷点”。常见的毒点类型包括但不限于：“主角圣母”、“情节憋屈”、“送女/绿帽”、“文青病”、“强行降智”等。
+    *   对于每个预警，提供【类型】、【描述】和【严重性】（高、中、低）。
+    *   在【总结】中，对整体的毒点风险进行概括。
+
+4.  **综合评估 (overallAssessment)**：
+    *   最后，提供一段【综合评估】。总结该创意的核心优势和主要风险，并给出关于后续创作方向、市场定位或设定调整的建设性意见。
+
+请严格按照指定的 JSON 格式和 schema 输出你的分析报告。`;
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      noveltyScore: { type: Type.INTEGER, description: "新颖度评分 (1-10)" },
+      noveltyAnalysis: { type: Type.STRING, description: "对新颖度的详细分析，指出亮点与陈旧元素。" },
+      marketFitAnalysis: {
+        type: Type.OBJECT,
+        properties: {
+          recommendedGenres: { type: Type.ARRAY, items: { type: Type.STRING } },
+          targetAudience: { type: Type.STRING, description: "目标读者画像描述。" },
+          marketPotential: { type: Type.STRING, description: "市场潜力预测。" },
+        },
+        required: ["recommendedGenres", "targetAudience", "marketPotential"],
+      },
+      poisonPillWarning: {
+        type: Type.OBJECT,
+        properties: {
+          warnings: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                type: { type: Type.STRING, description: "毒点类型，例如：'主角圣母'。" },
+                description: { type: Type.STRING, description: "对该毒点的具体描述。" },
+                severity: { type: Type.STRING, description: "严重性，可选值为 'High', 'Medium', 'Low'。" },
+              },
+              required: ["type", "description", "severity"],
+            },
+          },
+          summary: { type: Type.STRING, description: "对整体毒点风险的总结。" },
+        },
+        required: ["warnings", "summary"],
+      },
+      overallAssessment: { type: Type.STRING, description: "最终的综合评估和建议。" },
+    },
+    required: ["noveltyScore", "noveltyAnalysis", "marketFitAnalysis", "poisonPillWarning", "overallAssessment"],
+  };
+
+  try {
+    const response = await callGeminiWithRetry(() =>
+      ai.models.generateContent({
+        model: APP_GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: responseSchema as any,
+        },
+      })
+    );
+
+    if (!response.text) {
+        const finishReason = response.candidates?.[0]?.finishReason;
+        const safetyRatings = response.candidates?.[0]?.safetyRatings;
+        let detail = `The AI model returned no content.`;
+        if (finishReason) {
+            detail += ` Finish reason: ${finishReason}.`;
+        }
+        if (safetyRatings) {
+            detail += ` Safety ratings: ${JSON.stringify(safetyRatings, null, 2)}.`;
+        }
+      throw new Error(`AI 回应为空。${detail}`);
+    }
+
+    const parsedResult = parseJsonResponse<ViabilityReport>(response.text);
+
+    if (parsedResult.success === false) {
+      throw new Error(`无法解析AI的回应: ${parsedResult.error} 原始回应: "${parsedResult.rawText}"`);
+    }
+
+    return parsedResult.data;
+
+  } catch (error: any) {
+    console.error("分析创意可行性时出错:", error.message);
+    if (error.isRateLimitError === undefined) {
+      const newError = new Error(`分析创意可行性时发生内部错误：${error?.message}`);
+      (newError as any).isRateLimitError = false;
+      throw newError;
+    }
+    throw error;
+  }
+};
+
+export const analyzeChapterQuality = async (
+  ai: GoogleGenAI,
+  chapterText: string,
+): Promise<ChapterReport> => {
+    const systemInstruction = `你是一位资深的网文编辑和数据分析师，擅长对单章节进行精准、量化的质量评估。你的任务是客观地分析用户提供的章节文本，并根据预设的指标给出一份结构化的评估报告。你的分析必须严格、客观，并为作者提供可操作的反馈。
+
+你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义。JSON 结构必须严格遵循预设的 schema。`;
+
+    const userMessage = `请对以下网络小说章节进行量化评估，并生成一份详细的分析报告。
+
+--- 章节内容开始 ---
+${chapterText}
+--- 章节内容结束 ---
+
+请严格按照以下指标进行评估和分析：
+
+1.  **有效剧情推进率 (effectivePlotProgressionRate, progressionAnalysis)**:
+    *   评估本章内容中，有多少【百分比】的文本是直接或间接推动主线/重要支线剧情发展的。这包括：解决旧问题、产生新冲突、角色做出关键决策、获得重要信息或能力、关键人物关系发生变化等。
+    *   排除对话铺垫、景物描写、内心独白、非必要的设定解释等“水分”内容。给出一个 0-100 的整数百分比。
+    *   在【分析】中，简要说明你给出该百分比的理由，指出哪些是有效剧情，哪些可能被视为“灌水”。
+
+2.  **信息密度指数 (informationDensityIndex, densityAnalysis)**:
+    *   评估本章抛出的新信息（如背景设定、人物历史、世界观知识等）的数量和呈现方式。
+    *   给出一个 1-10 分的【评分】。1-3分表示信息过少、节奏拖沓；4-7分表示信息量适中；8-10分表示信息量过大，可能让读者难以消化。
+    *   在【分析】中，说明评分原因，并评价信息呈现的方式是否自然、是否服务于剧情。
+
+3.  **冲突/爽点密度 (conflictClimaxDensity, conflictAnalysis)**:
+    *   【计数】本章内发生的明确的冲突、打脸、升级、解谜、获得宝物等能激发读者情绪的关键情节（即“爽点”）的数量。
+    *   在【分析】中，列出你识别出的关键情节，并简要评价其强度和效果。
+
+4.  **“钩子”强度评级 (hookStrengthRating, hookAnalysis)**:
+    *   评估章节结尾的悬念或“钩子”对读者继续阅读的吸引力。
+    *   给出一个【评级】: "High" (高), "Medium" (中), 或 "Low" (低)。
+    *   在【分析】中，描述结尾的钩子是什么，并解释你给出该评级的理由。如果缺少钩子，也请明确指出。
+
+5.  **综合评估 (overallAssessment)**:
+    *   最后，提供一段【综合评估】。总结本章的整体表现，点出其最大的优点和最需要改进的地方。
+
+请严格按照指定的 JSON 格式和 schema 输出你的分析报告。`;
+
+    const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            effectivePlotProgressionRate: { type: Type.INTEGER, description: "有效剧情推进率 (0-100)" },
+            progressionAnalysis: { type: Type.STRING, description: "对剧情推进率的分析和解释。" },
+            informationDensityIndex: { type: Type.INTEGER, description: "信息密度指数 (1-10)" },
+            densityAnalysis: { type: Type.STRING, description: "对信息密度的分析和解释。" },
+            conflictClimaxDensity: { type: Type.INTEGER, description: "冲突/爽点事件的数量" },
+            conflictAnalysis: { type: Type.STRING, description: "对冲突/爽点事件的分析和列举。" },
+            hookStrengthRating: { type: Type.STRING, description: "钩子强度评级: 'High', 'Medium', 'Low'" },
+            hookAnalysis: { type: Type.STRING, description: "对结尾钩子的分析和解释。" },
+            overallAssessment: { type: Type.STRING, description: "对本章的最终综合评估和建议。" },
+        },
+        required: [
+            "effectivePlotProgressionRate", "progressionAnalysis",
+            "informationDensityIndex", "densityAnalysis",
+            "conflictClimaxDensity", "conflictAnalysis",
+            "hookStrengthRating", "hookAnalysis",
+            "overallAssessment"
+        ],
+    };
+
+    try {
+        const response = await callGeminiWithRetry(() =>
+          ai.models.generateContent({
+            model: APP_GEMINI_MODEL,
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+              responseSchema: responseSchema as any,
+            },
+          })
+        );
+
+        if (!response.text) {
+            const finishReason = response.candidates?.[0]?.finishReason;
+            const safetyRatings = response.candidates?.[0]?.safetyRatings;
+            let detail = `The AI model returned no content.`;
+            if (finishReason) {
+                detail += ` Finish reason: ${finishReason}.`;
+            }
+            if (safetyRatings) {
+                detail += ` Safety ratings: ${JSON.stringify(safetyRatings, null, 2)}.`;
+            }
+            throw new Error(`AI 回应为空。${detail}`);
+        }
+
+        const parsedResult = parseJsonResponse<ChapterReport>(response.text);
+
+        if (parsedResult.success === false) {
+            throw new Error(`无法解析AI的回应: ${parsedResult.error} 原始回应: "${parsedResult.rawText}"`);
+        }
+
+        return parsedResult.data;
+
+    } catch (error: any) {
+        console.error("分析章节质量时出错:", error.message);
+        if (error.isRateLimitError === undefined) {
+            const newError = new Error(`分析章节质量时发生内部错误：${error?.message}`);
+            (newError as any).isRateLimitError = false;
+            throw newError;
+        }
+        throw error;
+    }
 };

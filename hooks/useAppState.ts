@@ -1,13 +1,14 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { NovelChunk, ChunkStatus, AppState, AppOverallStatus, AnalysisMode, ChunkAnalysisResponse, PersistedProgressData } from '../types';
+import { NovelChunk, ChunkStatus, AppState, AppOverallStatus, AnalysisMode, ChunkAnalysisResponse, PersistedProgressData, ViabilityReport, ChapterReport } from '../types';
 import { CHUNK_SIZE, MAX_RELEVANT_HISTORICAL_ENTITIES, MAX_CHUNKS_FOR_OPENING_ANALYSIS, MAX_CONCURRENT_REQUESTS_FULL_MODE, INTER_CHUNK_API_DELAY_MS_OPENING, INTER_CHUNK_API_DELAY_MS_FULL } from '../constants';
 import { 
   startNovelAnalysisChat, 
   analyzeNovelChunkInChat, 
   concludeOpeningAssessmentInChat,
   analyzeNovelChunkForFullMode,
-  concludeFullNovelReportInChat
+  concludeFullNovelReportInChat,
+  analyzeCreativeViability,
+  analyzeChapterQuality
 } from '../public/services/geminiService';
 import type { Chat } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
@@ -23,6 +24,8 @@ const initialState: AppState = {
   currentChatInstance: null,
   openingAssessment: null,
   fullNovelReport: null,
+  viabilityReport: null,
+  chapterReport: null,
   appStatus: AppOverallStatus.IDLE,
   error: null,
   currentProcessingChunkOrder: 0,
@@ -132,8 +135,68 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
 
   const handleModeSelect = useCallback((mode: AnalysisMode) => {
     handleReset();
-    setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.MODE_SELECTED }));
+    if (mode === 'viability') {
+        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.AWAITING_VIABILITY_BRIEF }));
+    } else if (mode === 'chapter') {
+        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.AWAITING_CHAPTER_INPUT }));
+    } else {
+        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.MODE_SELECTED }));
+    }
   }, [handleReset]);
+
+  const handleViabilityBriefSubmit = useCallback(async (brief: string) => {
+    if (!geminiAi) {
+        setState(prev => ({ ...prev, error: "AI 服务未就绪，无法进行分析。", appStatus: AppOverallStatus.ERROR }));
+        return;
+    }
+    setState(prev => ({
+        ...prev,
+        appStatus: AppOverallStatus.ANALYZING_VIABILITY,
+        fileName: `创意简介分析 (${(brief.length / 1024).toFixed(1)} KB)`,
+        error: null,
+    }));
+    try {
+        const report = await analyzeCreativeViability(geminiAi, brief);
+        setState(prev => ({
+            ...prev,
+            viabilityReport: report,
+            appStatus: AppOverallStatus.VIABILITY_ANALYSIS_COMPLETED,
+        }));
+    } catch (err: any) {
+        setState(prev => ({
+            ...prev,
+            error: `创意分析失败: ${err.message}`,
+            appStatus: AppOverallStatus.ERROR,
+        }));
+    }
+  }, [geminiAi]);
+
+  const handleChapterSubmit = useCallback(async (chapterText: string) => {
+    if (!geminiAi) {
+        setState(prev => ({ ...prev, error: "AI 服务未就绪，无法进行分析。", appStatus: AppOverallStatus.ERROR }));
+        return;
+    }
+    setState(prev => ({
+        ...prev,
+        appStatus: AppOverallStatus.ANALYZING_CHAPTER,
+        fileName: `章节评估 (${(chapterText.length / 1024).toFixed(1)} KB)`,
+        error: null,
+    }));
+    try {
+        const report = await analyzeChapterQuality(geminiAi, chapterText);
+        setState(prev => ({
+            ...prev,
+            chapterReport: report,
+            appStatus: AppOverallStatus.CHAPTER_ANALYSIS_COMPLETED,
+        }));
+    } catch (err: any) {
+        setState(prev => ({
+            ...prev,
+            error: `章节评估失败: ${err.message}`,
+            appStatus: AppOverallStatus.ERROR,
+        }));
+    }
+  }, [geminiAi]);
   
   const processFileInWorker = useCallback((file: File | null, textInput: string | null = null) => {
     if (workerRef.current) {
@@ -768,6 +831,8 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     handleModeSelect,
     handleFileSelected,
     handleTextSubmit,
+    handleViabilityBriefSubmit,
+    handleChapterSubmit,
     handlePause,
     handleResume,
     handleCancel,
