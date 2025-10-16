@@ -1,20 +1,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { NovelChunk, ChunkStatus, AppState, AppOverallStatus, AnalysisMode, ChunkAnalysisResponse, PersistedProgressData, ViabilityReport, ChapterReport } from '../types';
+import { NovelChunk, ChunkStatus, AppState, AppOverallStatus, AnalysisMode, ChunkAnalysisResponse, PersistedProgressData } from '../types';
 import { CHUNK_SIZE, MAX_RELEVANT_HISTORICAL_ENTITIES, MAX_CHUNKS_FOR_OPENING_ANALYSIS, MAX_CONCURRENT_REQUESTS_FULL_MODE, INTER_CHUNK_API_DELAY_MS_OPENING, INTER_CHUNK_API_DELAY_MS_FULL } from '../constants';
 import { 
   startNovelAnalysisChat, 
   analyzeNovelChunkInChat, 
   concludeOpeningAssessmentInChat,
   analyzeNovelChunkForFullMode,
-  concludeFullNovelReportInChat,
-  analyzeCreativeViability,
-  analyzeChapterQuality
+  concludeFullNovelReportInChat
 } from '../public/services/geminiService';
 import type { Chat } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
 
 const APP_PERSISTENCE_VERSION = "1.0.1";
 const MAMMOTH_SCRIPT_URL = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js';
+const USER_API_KEY_LOCALSTORAGE_KEY = 'userGeminiApiKeyOverride';
 
 const initialState: AppState = {
   analysisMode: null,
@@ -24,8 +23,6 @@ const initialState: AppState = {
   currentChatInstance: null,
   openingAssessment: null,
   fullNovelReport: null,
-  viabilityReport: null,
-  chapterReport: null,
   appStatus: AppOverallStatus.IDLE,
   error: null,
   currentProcessingChunkOrder: 0,
@@ -41,8 +38,9 @@ const scrollToTop = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-export const useAppState = (geminiAi: GoogleGenAI | null) => {
+export const useAppState = (initialGeminiAi: GoogleGenAI | null) => {
   const [state, setState] = useState<AppState>(initialState);
+  const [currentAiClient, setCurrentAiClient] = useState<GoogleGenAI | null>(initialGeminiAi);
   const workerRef = useRef<Worker | null>(null);
   const activeRequestCountRef = useRef(0);
   const isProcessingPausedRef = useRef(false);
@@ -50,6 +48,45 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
   const [workerLogs, setWorkerLogs] = useState<string[]>([]);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string | null>(null);
   const chunkProcessingTimesRef = useRef<number[]>([]);
+
+  // Effect to initialize user-override AI client on load
+  useEffect(() => {
+    const userApiKey = localStorage.getItem(USER_API_KEY_LOCALSTORAGE_KEY);
+    if (userApiKey && !currentAiClient) { // only if initial one is not set, or override
+      try {
+        const userAiClient = new GoogleGenAI({ apiKey: userApiKey });
+        setCurrentAiClient(userAiClient);
+        console.log("Initialized with user-provided API key from previous session.");
+      } catch (e) {
+        console.error("Failed to initialize with stored user API key:", e);
+        localStorage.removeItem(USER_API_KEY_LOCALSTORAGE_KEY);
+      }
+    }
+  }, []); // Runs only once on mount
+
+  const handleApiKeyOverride = useCallback(async (newKey: string): Promise<{ success: boolean; error?: string }> => {
+    if (!newKey.trim()) {
+      return { success: false, error: "API Key cannot be empty." };
+    }
+    try {
+      const newClient = new GoogleGenAI({ apiKey: newKey });
+      // Validate the new key with a test call
+      await newClient.models.generateContent({model: 'gemini-2.5-flash', contents: 'test'});
+      setCurrentAiClient(newClient);
+      localStorage.setItem(USER_API_KEY_LOCALSTORAGE_KEY, newKey);
+      setState(prev => ({ ...prev, appStatus: AppOverallStatus.ANALYZING_CHUNKS, error: null }));
+      isProcessingPausedRef.current = false;
+      console.log("Successfully switched to user-provided API key.");
+      return { success: true };
+    } catch (error: any) {
+      console.error("Failed to validate or set new API key:", error);
+      let message = "API Key validation failed. Please check the key and try again.";
+      if (error.message.includes('API key not valid')) {
+          message = "The provided API key is invalid.";
+      }
+      return { success: false, error: message };
+    }
+  }, []);
 
   const saveProgressToLocalStorage = useCallback((currentAppState: AppState) => {
     if (!currentAppState.analysisIdentifier) return;
@@ -130,73 +167,15 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     setState(initialState);
     setWorkerLogs([]);
     setEstimatedTimeRemaining(null);
+    setCurrentAiClient(initialGeminiAi); // Reset to default AI client
+    localStorage.removeItem(USER_API_KEY_LOCALSTORAGE_KEY);
     scrollToTop();
-  }, [state.analysisIdentifier, clearProgressFromLocalStorage]);
+  }, [state.analysisIdentifier, clearProgressFromLocalStorage, initialGeminiAi]);
 
   const handleModeSelect = useCallback((mode: AnalysisMode) => {
     handleReset();
-    if (mode === 'viability') {
-        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.AWAITING_VIABILITY_BRIEF }));
-    } else if (mode === 'chapter') {
-        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.AWAITING_CHAPTER_INPUT }));
-    } else {
-        setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.MODE_SELECTED }));
-    }
+    setState(prev => ({ ...prev, analysisMode: mode, appStatus: AppOverallStatus.MODE_SELECTED }));
   }, [handleReset]);
-
-  const handleViabilityBriefSubmit = useCallback(async (brief: string) => {
-    if (!geminiAi) {
-        setState(prev => ({ ...prev, error: "AI 服务未就绪，无法进行分析。", appStatus: AppOverallStatus.ERROR }));
-        return;
-    }
-    setState(prev => ({
-        ...prev,
-        appStatus: AppOverallStatus.ANALYZING_VIABILITY,
-        fileName: `创意简介分析 (${(brief.length / 1024).toFixed(1)} KB)`,
-        error: null,
-    }));
-    try {
-        const report = await analyzeCreativeViability(geminiAi, brief);
-        setState(prev => ({
-            ...prev,
-            viabilityReport: report,
-            appStatus: AppOverallStatus.VIABILITY_ANALYSIS_COMPLETED,
-        }));
-    } catch (err: any) {
-        setState(prev => ({
-            ...prev,
-            error: `创意分析失败: ${err.message}`,
-            appStatus: AppOverallStatus.ERROR,
-        }));
-    }
-  }, [geminiAi]);
-
-  const handleChapterSubmit = useCallback(async (chapterText: string) => {
-    if (!geminiAi) {
-        setState(prev => ({ ...prev, error: "AI 服务未就绪，无法进行分析。", appStatus: AppOverallStatus.ERROR }));
-        return;
-    }
-    setState(prev => ({
-        ...prev,
-        appStatus: AppOverallStatus.ANALYZING_CHAPTER,
-        fileName: `章节评估 (${(chapterText.length / 1024).toFixed(1)} KB)`,
-        error: null,
-    }));
-    try {
-        const report = await analyzeChapterQuality(geminiAi, chapterText);
-        setState(prev => ({
-            ...prev,
-            chapterReport: report,
-            appStatus: AppOverallStatus.CHAPTER_ANALYSIS_COMPLETED,
-        }));
-    } catch (err: any) {
-        setState(prev => ({
-            ...prev,
-            error: `章节评估失败: ${err.message}`,
-            appStatus: AppOverallStatus.ERROR,
-        }));
-    }
-  }, [geminiAi]);
   
   const processFileInWorker = useCallback((file: File | null, textInput: string | null = null) => {
     if (workerRef.current) {
@@ -242,9 +221,9 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
         let startError: string | null = null;
 
         if (state.analysisMode === "opening") {
-            if (geminiAi) {
+            if (currentAiClient) {
                 try {
-                    chatInstance = startNovelAnalysisChat(geminiAi);
+                    chatInstance = startNovelAnalysisChat(currentAiClient);
                 } catch (e: any) {
                     startError = `无法启动 AI 对话来进行开篇分析: ${e.message}`;
                     nextStatus = AppOverallStatus.ERROR;
@@ -302,7 +281,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
         maxChunksForOpening: MAX_CHUNKS_FOR_OPENING_ANALYSIS,
         mammothUrl: MAMMOTH_SCRIPT_URL,
     });
-  }, [state.analysisMode, geminiAi]);
+  }, [state.analysisMode, currentAiClient]);
 
   const handleFileSelected = useCallback((selectedFile: File) => {
     const currentMode = state.analysisMode;
@@ -402,7 +381,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
   }, [state.analysisMode, processFileInWorker]);
 
   const readAndProcessNextChunk = useCallback(async () => {
-    if (isProcessingPausedRef.current || !geminiAi) return;
+    if (isProcessingPausedRef.current || !currentAiClient) return;
 
     const { chunks, currentProcessingChunkOrder, totalChunksToProcess, analysisMode } = state;
     
@@ -435,13 +414,22 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
 
     let textContent = '';
     try {
-        if (chunkToProcess.fileChunk.size > 0) { 
+        let blobToRead = chunkToProcess.fileChunk;
+        // This is the rehydration logic for resuming from localStorage
+        if (blobToRead.size === 0 && state.file) {
+            console.log(`Rehydrating blob for chunk ${chunkToProcess.order}`);
+            const start = chunkToProcess.order * CHUNK_SIZE;
+            const end = start + CHUNK_SIZE;
+            blobToRead = state.file.slice(start, end);
+        }
+
+        if (blobToRead.size > 0) { 
             setState(prev => ({
                 ...prev,
-                chunks: prev.chunks.map(c => c.id === chunkToProcess.id ? { ...c, status: ChunkStatus.READING } : c)
+                chunks: prev.chunks.map(c => c.id === chunkToProcess.id ? { ...c, status: ChunkStatus.READING, fileChunk: blobToRead } : c)
             }));
             const textDecoder = new TextDecoder('utf-8'); 
-            textContent = textDecoder.decode(await chunkToProcess.fileChunk.arrayBuffer());
+            textContent = textDecoder.decode(await blobToRead.arrayBuffer());
         } else {
             console.warn(`Chunk ${chunkToProcess.order} has an empty fileChunk. Skipping analysis or treating as error.`);
             setState(prev => ({
@@ -525,7 +513,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
          const previousChunk = state.chunks.find(c => c.order === chunkToProcess.order - 1);
          const prevSummary = previousChunk?.summary;
         analysisResult = await analyzeNovelChunkForFullMode(
-            geminiAi,
+            currentAiClient,
             textContent, 
             chunkToProcess.order + 1,
             totalChunksToProcess, 
@@ -562,11 +550,13 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     } catch (err: any) {
         let errorMessage = `AI分析分块 ${chunkToProcess.order + 1} 失败: ${err.message}`;
         if (err.isRateLimitError) {
-            errorMessage = `AI分析分块 ${chunkToProcess.order + 1} 因达到API速率限制而失败: ${err.message}. 将在一段时间后重试当前块。`;
+            errorMessage = `处理分块 ${chunkToProcess.order + 1} 时已达到 API 使用频率限制。分析已暂停。应用将在一段时间后自动重试。您也可以提供自己的 API Key 以立即继续。`;
             console.warn(errorMessage);
+            isProcessingPausedRef.current = true;
              setState(prev => ({
                 ...prev,
-                chunks: prev.chunks.map(c => c.id === chunkToProcess.id ? { ...c, status: ChunkStatus.PENDING_ANALYSIS, error: "API速率限制，等待重试" } : c),
+                appStatus: AppOverallStatus.PAUSED_RATE_LIMITED,
+                chunks: prev.chunks.map(c => c.id === chunkToProcess.id ? { ...c, status: ChunkStatus.PENDING_ANALYSIS, error: "API速率限制" } : c),
                 error: errorMessage
             }));
         } else {
@@ -587,10 +577,10 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
       activeRequestCountRef.current--;
       abortControllersRef.current = abortControllersRef.current.filter(c => c !== abortController);
     }
-  }, [state, geminiAi]);
+  }, [state, currentAiClient]);
 
   const finalizeOpeningAssessment = useCallback(async () => {
-    if (!geminiAi) {
+    if (!currentAiClient) {
         setState(prev => ({...prev, error: "AI 服务未就绪，无法生成开篇总结报告。", appStatus: AppOverallStatus.ERROR }));
         return;
     }
@@ -609,7 +599,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
       }
       
       const assessment = await concludeOpeningAssessmentInChat(
-        geminiAi,
+        currentAiClient,
         state.chunks.filter(c => c.status === ChunkStatus.ANALYZED && c.order < state.totalChunksToProcess).length,
         analyzedSummaries
       );
@@ -622,10 +612,10 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     } finally {
         isProcessingPausedRef.current = false;
     }
-  }, [state.chunks, state.totalChunksToProcess, state.analysisIdentifier, clearProgressFromLocalStorage, geminiAi]);
+  }, [state.chunks, state.totalChunksToProcess, state.analysisIdentifier, clearProgressFromLocalStorage, currentAiClient]);
 
   const finalizeFullReport = useCallback(async () => {
-    if (!geminiAi) {
+    if (!currentAiClient) {
         setState(prev => ({...prev, error: "AI 服务未就绪，无法生成全本总结报告。", appStatus: AppOverallStatus.ERROR }));
         return;
     }
@@ -644,7 +634,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
       }
 
       const report = await concludeFullNovelReportInChat(
-        geminiAi,
+        currentAiClient,
         state.fileName || "未知小说",
         state.chunks.filter(c => c.status === ChunkStatus.ANALYZED).length,
         allSummaries
@@ -657,7 +647,7 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     } finally {
         isProcessingPausedRef.current = false;
     }
-  }, [state.chunks, state.fileName, state.actualTotalChunksInFile, state.analysisIdentifier, clearProgressFromLocalStorage, geminiAi]);
+  }, [state.chunks, state.fileName, state.actualTotalChunksInFile, state.analysisIdentifier, clearProgressFromLocalStorage, currentAiClient]);
 
   const handlePause = useCallback(() => {
     isProcessingPausedRef.current = true;
@@ -690,9 +680,9 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     let nextStatus = AppOverallStatus.ANALYZING_CHUNKS;
     let chatInstance = state.currentChatInstance;
 
-    if (state.analysisMode === 'opening' && !chatInstance && geminiAi) {
+    if (state.analysisMode === 'opening' && !chatInstance && currentAiClient) {
         try {
-            chatInstance = startNovelAnalysisChat(geminiAi);
+            chatInstance = startNovelAnalysisChat(currentAiClient);
         } catch (e: any) {
             setState(prev => ({ ...prev, error: `恢复时无法启动 AI 对话: ${e.message}`, appStatus: AppOverallStatus.ERROR }));
             return;
@@ -709,16 +699,19 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
         error: null 
     }));
     console.log("Analysis resumed from chunk " + newCurrentProcessingChunkOrder);
-  }, [state.analysisIdentifier, state.analysisMode, state.currentChatInstance, state.lastSuccessfullyProcessedChunkOrder, geminiAi]);
+  }, [state.analysisIdentifier, state.analysisMode, state.currentChatInstance, state.lastSuccessfullyProcessedChunkOrder, currentAiClient]);
 
   const handleCancel = useCallback(() => {
     handleReset(true); 
+    setState(prev => ({...prev, appStatus: AppOverallStatus.CANCELLED }));
     console.log("Analysis cancelled and progress cleared.");
   }, [handleReset]);
 
   const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: null }));
-  }, []);
+    if (state.appStatus !== AppOverallStatus.PAUSED_RATE_LIMITED) {
+        setState(prev => ({ ...prev, error: null }));
+    }
+  }, [state.appStatus]);
 
   // Effect for chunk processing queue
   useEffect(() => {
@@ -818,7 +811,9 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
   useEffect(() => {
     if (state.analysisIdentifier && 
         (state.appStatus === AppOverallStatus.ANALYZING_CHUNKS || 
-         state.appStatus === AppOverallStatus.PAUSED_AWAITING_RESUME) &&
+         state.appStatus === AppOverallStatus.PAUSED_AWAITING_RESUME ||
+         state.appStatus === AppOverallStatus.PAUSED_RATE_LIMITED
+         ) &&
         state.lastSuccessfullyProcessedChunkOrder >= 0) {
       saveProgressToLocalStorage(state);
     }
@@ -831,12 +826,11 @@ export const useAppState = (geminiAi: GoogleGenAI | null) => {
     handleModeSelect,
     handleFileSelected,
     handleTextSubmit,
-    handleViabilityBriefSubmit,
-    handleChapterSubmit,
     handlePause,
     handleResume,
     handleCancel,
     handleReset,
     clearError,
+    handleApiKeyOverride,
   };
 };

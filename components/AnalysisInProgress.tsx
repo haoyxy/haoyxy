@@ -7,6 +7,7 @@ import { StatusDisplay } from './StatusDisplay';
 import { ErrorDisplay } from './ErrorDisplay';
 import { ApiLimitWarning } from './ApiLimitWarning';
 import { ChunkItem } from './ChunkItem';
+import { RateLimitOverrideInput } from './RateLimitOverrideInput';
 
 interface AnalysisInProgressProps {
   state: AppState;
@@ -20,6 +21,7 @@ interface AnalysisInProgressProps {
   onCancel: () => void;
   onPause: () => void;
   onClearError: () => void;
+  onApiKeyOverride: (newKey: string) => Promise<{ success: boolean; error?: string }>;
   workerLogs: string[];
 }
 
@@ -31,6 +33,7 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
   onCancel,
   onPause,
   onClearError,
+  onApiKeyOverride,
   workerLogs,
 }) => {
   return (
@@ -40,7 +43,8 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
         {isProcessing && state.appStatus !== AppOverallStatus.GENERATING_OPENING_ASSESSMENT && state.appStatus !== AppOverallStatus.GENERATING_FULL_NOVEL_REPORT && (
           <button
             onClick={onPause}
-            className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg shadow-md hover:shadow-amber-500/20 transition-all duration-200 transform hover:-translate-y-0.5"
+            disabled={state.appStatus === AppOverallStatus.PAUSED_RATE_LIMITED}
+            className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg shadow-md hover:shadow-amber-500/20 transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             暂停分析
           </button>
@@ -68,7 +72,14 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
         analysisMode={state.analysisMode}
       />
       
-      {state.error && <ErrorDisplay message={state.error} onClear={onClearError} />}
+      {state.error && state.appStatus !== AppOverallStatus.PAUSED_RATE_LIMITED && <ErrorDisplay message={state.error} onClear={onClearError} />}
+
+      {state.appStatus === AppOverallStatus.PAUSED_RATE_LIMITED && (
+        <RateLimitOverrideInput
+          onApiKeySubmit={onApiKeyOverride}
+          currentError={state.error}
+        />
+      )}
       
       {state.totalChunksToProcess > 0 && state.appStatus === AppOverallStatus.ANALYZING_CHUNKS && (
         <ApiLimitWarning
