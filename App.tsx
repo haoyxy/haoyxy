@@ -68,6 +68,8 @@ const App: React.FC = () => {
                          state.appStatus === AppOverallStatus.ANALYZING_CHUNKS ||
                          state.appStatus === AppOverallStatus.GENERATING_OPENING_ASSESSMENT ||
                          state.appStatus === AppOverallStatus.GENERATING_FULL_NOVEL_REPORT;
+                         
+    const isPreparing = state.appStatus === AppOverallStatus.PREPARING_ANALYSIS;
 
     const totalSteps = state.totalChunksToProcess > 0 ? state.totalChunksToProcess + 1 : 0; // +1 for the final report
     let currentStep = state.currentProcessingChunkOrder;
@@ -83,13 +85,21 @@ const App: React.FC = () => {
         return <ModeSelector onModeSelect={handleModeSelect} workerLogs={workerLogs} />;
 
       case AppOverallStatus.MODE_SELECTED:
+      case AppOverallStatus.PREPARING_ANALYSIS:
         return (
             <div className="space-y-6">
                 <BackButton onClick={() => handleReset(false)} text="返回选择模式" />
+                {isPreparing && (
+                    <div className="text-center p-6 flex flex-col items-center justify-center space-y-4">
+                        <Spinner size="lg" />
+                        <p className="text-slate-400 font-semibold text-lg">正在准备分析，请稍候...</p>
+                        <p className="text-slate-500 text-sm">正在读取文件并进行智能分块...</p>
+                    </div>
+                )}
                 <FileUploadArea
                     onFileSelected={handleFileSelected}
                     onTextSubmit={handleTextSubmit}
-                    disabled={!geminiAi}
+                    disabled={!geminiAi || isPreparing}
                 />
             </div>
         );

@@ -2,6 +2,12 @@ import { Chat } from "@google/genai";
 
 export type AnalysisMode = "opening" | "full";
 
+export interface ExtractedEntity {
+  name: string;
+  type: string; // e.g., '角色', '地点', '组织', '物品', '概念', '功法技能', '关键冲突'
+  context: string; // Brief context of its first mention or importance in the chunk
+}
+
 export interface NovelChunk {
   id: string;
   fileChunk: Blob; // Blob created from ArrayBuffer sent by worker
@@ -36,7 +42,7 @@ export interface AppState {
   totalChunksToProcess: number; 
   actualTotalChunksInFile: number; 
   knowledgeBase: Map<string, { firstMentionOrder: number; summaryOfFirstMention: string }>;
-  allKnownEntities: Set<string>;
+  allKnownEntities: Map<string, ExtractedEntity>;
   analysisIdentifier: string | null; // Unique ID for the current analysis task (filename/hash + mode)
   lastSuccessfullyProcessedChunkOrder: number; // To track resume point
 }
@@ -44,6 +50,7 @@ export interface AppState {
 export enum AppOverallStatus {
   IDLE = "IDLE",
   MODE_SELECTED = "MODE_SELECTED",
+  PREPARING_ANALYSIS = "PREPARING_ANALYSIS", // New status for when worker is chunking
   FILE_SELECTED = "FILE_SELECTED", 
   READING_CHUNKS = "READING_CHUNKS", 
   ANALYZING_CHUNKS = "ANALYZING_CHUNKS",
@@ -60,7 +67,7 @@ export enum AppOverallStatus {
 export interface ChunkAnalysisResponse {
   summary: string;
   analysis: string;
-  extractedEntities?: string[];
+  extractedEntities?: ExtractedEntity[];
 }
 
 // Data structure for saving progress to localStorage
@@ -73,7 +80,7 @@ export interface PersistedProgressData {
   openingAssessment: string | null;
   fullNovelReport: string | null;
   knowledgeBaseEntries: Array<[string, { firstMentionOrder: number; summaryOfFirstMention: string }]>; // For Map
-  allKnownEntitiesArray: string[]; // For Set
+  allKnownEntitiesArray: Array<[string, ExtractedEntity]>; // For Map<string, ExtractedEntity>
   lastSuccessfullyProcessedChunkOrder: number;
   totalChunksToProcess: number;
   actualTotalChunksInFile: number;

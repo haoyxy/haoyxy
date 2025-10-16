@@ -12,37 +12,50 @@ const callGeminiWithRetry = async (
   let currentDelay = initialDelayMs;
 
   while (true) {
-    let isRateLimitError = false; // Initialize here for each attempt cycle
-    let detailedErrorMessage: string = 'Unknown API error during callGeminiWithRetry'; // Declare and initialize
+    let isRateLimitError = false;
+    let isAuthError = false;
+    let detailedErrorMessage: string = 'Unknown API error during callGeminiWithRetry';
 
     try {
       return await apiCall();
     } catch (error: any) {
       detailedErrorMessage = error.message || 'Unknown API error after catch';
 
+      // Enhanced error parsing
+      let errorCode: number | null = null;
       if (typeof error.message === 'string') {
         try {
           const parsedError = JSON.parse(error.message);
           if (parsedError.error) {
             detailedErrorMessage = parsedError.error.message || detailedErrorMessage;
-            if (parsedError.error.code === 429 || parsedError.error.status === 'RESOURCE_EXHAUSTED' || parsedError.error.status === 'RATE_LIMIT_EXCEEDED') {
+            errorCode = parsedError.error.code;
+            const status = parsedError.error.status;
+            if (errorCode === 429 || status === 'RESOURCE_EXHAUSTED' || status === 'RATE_LIMIT_EXCEEDED') {
               isRateLimitError = true;
+            }
+            if (errorCode === 401 || errorCode === 403 || detailedErrorMessage.toLowerCase().includes("api key not valid")) {
+              isAuthError = true;
             }
           }
         } catch (e) {
-          // Not a JSON string, or parsing failed. detailedErrorMessage remains error.message or the default.
+          // Not a JSON string
         }
       }
       
-      // Fallback check on error object properties (if error.message wasn't a parsable JSON string containing the info)
-      if (!isRateLimitError && error.code === 429) { 
-          isRateLimitError = true;
-      }
-      if (!isRateLimitError && typeof error.status === 'string' && (error.status.toUpperCase() === 'RESOURCE_EXHAUSTED' || error.status.toUpperCase() === 'RATE_LIMIT_EXCEEDED')) {
+      // Fallback check
+      if (error.code === 429) isRateLimitError = true;
+      if (error.code === 401 || error.code === 403) isAuthError = true;
+      if (typeof error.status === 'string' && (error.status.toUpperCase() === 'RESOURCE_EXHAUSTED' || error.status.toUpperCase() === 'RATE_LIMIT_EXCEEDED')) {
           isRateLimitError = true;
       }
 
-
+      // If it's an auth error, fail immediately without retry
+      if (isAuthError) {
+        const finalError = new Error(`Authentication failed: ${detailedErrorMessage}`);
+        (finalError as any).isAuthError = true;
+        throw finalError;
+      }
+      
       if (isRateLimitError && attempt < maxRetries) {
         attempt++;
         const jitter = Math.random() * 1000; // Add up to 1s jitter
@@ -59,7 +72,8 @@ const callGeminiWithRetry = async (
             console.error(`API call failed. Error: ${detailedErrorMessage}`, error);
         }
         const finalError = new Error(finalErrorMessageText);
-        (finalError as any).isRateLimitError = isRateLimitError; // Attach the flag
+        (finalError as any).isRateLimitError = isRateLimitError;
+        (finalError as any).isAuthError = isAuthError;
         throw finalError;
       }
     }
@@ -165,18 +179,25 @@ export const startNovelAnalysisChat = (ai: GoogleGenAI): Chat => {
 
 分析原则：
 1.  **读者第一视角**：模拟真实读者，特别是网文老饕的阅读体验和期待。
-2.  **“黄金三章”核心**：严格审视每一分块是否符合“黄金三章”的经典要求，例如是否有效设立悬念、引入核心冲突、塑造主角魅力、明确主要矛盾。
-3.  **批判性与建设性**：不仅要识别亮点，更要精准指出不足。你的分析应具有洞察力，并对寻求改进开篇的作者具有实际指导意义。
-4.  **卖点挖掘**：识别并评估小说开篇所展现的核心“卖点”（如独特的设定、引人入胜的情节钩子、鲜明的角色、创新的世界观等）。
+2.  **“黄金三章”核心**：严格审视每一分块是否符合“黄金三章”的经典要求。
+3.  **批判性与建设性**：不仅要识别亮点，更要精准指出不足。
+4.  **卖点挖掘**：识别并评估小说开篇所展现的核心“卖点”。
 
 你将按顺序接收小说的前 ${MAX_CHUNKS_FOR_OPENING_ANALYSIS} 个分块。
 对于每个分块，你需要：
-- 提供一个简洁凝练的摘要（2-4句话），准确捕捉该分块的核心事件和信息。
-- 提供一份详细的批判性分析，聚焦于该分块对小说开篇的贡献与影响。明确指出其优点（如如何吸引读者、如何铺垫后续等）和可以改进之处（如节奏问题、信息模糊、吸引力不足等）。
-- 提取当前分块内容中出现的、对理解开篇剧情至关重要的“关键实体”。这些实体应主要为专有名词，例如：重要角色名（主角、重要配角、反派）、有辨识度的地点名、独特的物品或功法技能名、组织派系名，以及本分块引入的、尚未解决的核心谜团或关键冲突线索。
+- 提供一个简洁凝练的摘要（2-4句话）。
+- 提供一份详细的批判性分析。
+- 提取当前分块内容中出现的、对理解开篇剧情至关重要的“关键实体”。
 
-严格遵守JSON输出格式。你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义（例如，换行符表示为 \\n，双引号表示为 \\"，反斜杠表示为 \\\\）。JSON 结构必须如下：
-{"summary": "...", "analysis": "...", "extractedEntities": ["实体1", "实体2"]}`,
+严格遵守JSON输出格式。你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义。
+"extractedEntities" 必须是一个对象数组，每个对象包含 "name", "type", 和 "context" 字段。
+- name: 实体名称 (string)
+- type: 实体类型 (string from ['角色', '地点', '组织', '物品', '功法技能', '核心概念', '关键冲突'])
+- context: 简要说明该实体在本分块中首次出现或被强调的原因/上下文 (string)
+
+JSON 结构必须如下：
+{"summary": "...", "analysis": "...", "extractedEntities": [{"name": "实体1", "type": "类型", "context": "上下文描述"}, ...]}`
+,
         responseMimeType: "application/json",
       },
     });
@@ -201,18 +222,22 @@ export const analyzeNovelChunkInChat = async (
     if (previousChunkSummary && chunkNumber > 1) prompt += `\n\n前情提要（上一个开篇分块的摘要）：\n${previousChunkSummary}\n`;
     if (relevantHistoricalContext) prompt += `\n\n${relevantHistoricalContext}\n`;
     
-    prompt += `\n\n请在“analysis”中详述以下针对小说开篇的关键要素，并评价其优缺点，尽可能提供具体文本证据支持你的观点：
-1.  **“黄金三章”贡献度**: 根据当前是第 ${chunkNumber} 块，评估其在设立核心冲突、介绍关键角色（尤其是主角）、构建初期悬念、展现小说核心卖点等方面的效果。
-2.  **情节节奏与结构**: 节奏是否紧凑抓人，还是拖沓冗余？事件安排是否逻辑清晰，引人入胜？信息密度是否合适？
-3.  **角色塑造（开篇阶段）**: 主角形象是否鲜明、有吸引力？其动机、目标、困境是否清晰呈现？配角是否有记忆点，是否有效服务于主角或情节？
-4.  **文笔与叙事**: 语言风格是否与题材匹配？叙事是否流畅自然？描写是否生动形象，能否有效调动读者情绪？对话是否符合人物身份？
-5.  **创新性与套路（开篇阶段）**: 有无令人耳目一新的设定、情节或角色类型？是否巧妙地运用或规避了常见网文套路？
-6.  **开篇吸引力要素**: 是否成功营造了强烈的代入感、好奇心、期待感或危机感？有无明确的“爽点”或“钩子”？
-7.  **(若有历史背景回顾)** **开篇历史关联**：当前分块内容与早期提及实体的关联性及其对剧情的推动效果，是否自然且有意义？
+    prompt += `\n\n请在“analysis”中详述以下针对小说开篇的关键要素，并评价其优缺点：
+1.  **“黄金三章”贡献度**: 评估其在设立核心冲突、介绍关键角色、构建初期悬念、展现小说核心卖点等方面的效果。
+2.  **情节节奏与结构**: 节奏是否紧凑抓人？事件安排是否逻辑清晰？
+3.  **角色塑造（开篇阶段）**: 主角形象是否鲜明、有吸引力？
+4.  **文笔与叙事**: 语言风格是否与题材匹配？叙事是否流畅？
+5.  **创新性与套路（开篇阶段）**: 有无令人耳目一新的设定或情节？
+6.  **开篇吸引力要素**: 是否成功营造了强烈的代入感、好奇心、期待感或危机感？
 
-请提取当前分块内容中出现的、对理解后续开篇剧情发展至关重要的“关键实体”。这些实体应主要为专有名词，例如：重要角色名、有辨识度的地点名、独特的物品或功法技能名、组织派系名，以及本分块引入的、尚未解决的核心谜团或关键冲突线索。
+请提取当前分块内容中出现的、对理解后续开篇剧情发展至关重要的“关键实体”。
+每个实体必须包含 "name", "type", 和 "context"。
+- name: 实体名称
+- type: 从 ['角色', '地点', '组织', '物品', '功法技能', '核心概念', '关键冲突'] 中选择一个最合适的类型。
+- context: 用一句话简要说明该实体在本分块中首次出现或被强调的原因/上下文。
 
-请记住，回应必须是严格符合规范的 JSON 格式。在 JSON 的字符串值中，确保正确转义特殊字符（例如换行符为 \\n，双引号为 \\"，反斜杠为 \\\\）。JSON 结构：{"summary": "...", "analysis": "...", "extractedEntities": ["实体1", "实体2"]}\n\n--- 分块内容开始 ---\n${chunkContent}\n--- 分块内容结束 ---`;
+请记住，回应必须是严格符合规范的 JSON 格式。
+JSON 结构：{"summary": "...", "analysis": "...", "extractedEntities": [{"name": "实体1", "type": "类型", "context": "上下文描述"}, ...]}\n\n--- 分块内容开始 ---\n${chunkContent}\n--- 分块内容结束 ---`;
     
     const response = await callGeminiWithRetry(
         () => chat.sendMessage({ message: prompt })
@@ -346,12 +371,18 @@ export const analyzeNovelChunkForFullMode = async (
   const systemInstructionForFullChunk = `你是一位资深文学评论家和小说分析专家，擅长对长篇网络小说进行全面而深入的解构。
 你的核心任务是：按顺序接收并分析小说的所有内容分块，为最终的整书综合报告提供素材。你的分析需要客观、精准、并关注细节。
 对于当前提供的分块：
-- 提供一个该分块的简洁但信息丰富的摘要（3-5句话），准确捕捉核心事件、关键信息和主要进展。
-- 提供一份对该分块主要内容、情节进展、角色表现和重要设定的客观分析，侧重于其在整体叙事中的作用和意义。
+- 提供一个该分块的简洁但信息丰富的摘要（3-5句话）。
+- 提供一份对该分块主要内容、情节进展、角色表现和重要设定的客观分析。
 - 提取该分块中出现的、对理解小说整体情节或追踪关键元素发展至关重要的“关键实体”。
 
-你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义（例如，换行符应表示为 \\n，双引号应表示为 \\"，反斜杠应表示为 \\\\）。JSON 结构必须如下：
-{"summary": "...", "analysis": "...", "extractedEntities": ["实体A", "事件B"]}`;
+你的回应必须是一个有效的、可以直接解析的 JSON 对象。在 JSON 的字符串值中，请确保所有特殊字符都已正确转义。
+"extractedEntities" 必须是一个对象数组，每个对象包含 "name", "type", 和 "context" 字段。
+- name: 实体名称 (string)
+- type: 实体类型 (string from ['角色', '地点', '组织', '物品', '功法技能', '核心概念', '关键冲突', '重大事件'])
+- context: 简要说明该实体在本分块中首次出现或被强调的原因/上下文 (string)
+
+JSON 结构必须如下：
+{"summary": "...", "analysis": "...", "extractedEntities": [{"name": "实体1", "type": "类型", "context": "上下文描述"}, ...]}`;
 
   try {
     let userMessage = `这是小说全本（共 ${totalChunksInNovel} 个分块）中的第 ${chunkNumber} 个分块。请对此分块内容进行摘要和分析。`;
@@ -359,23 +390,21 @@ export const analyzeNovelChunkForFullMode = async (
       userMessage += `\n\n作为参考，上一个分块的摘要是：\n${previousChunkSummary}\n`;
     }
     
-    userMessage += `\n\n请在“analysis”字段中，详细描述此分块的主要内容，侧重以下方面，并提供具体文本细节支持：
-1.  **关键情节进展**：本分块发生了哪些重要事件？剧情是如何推进的？这些事件的直接后果是什么？与主线故事的关联是什么？
-2.  **角色动态与发展**：
-    *   主要角色在本分块中有哪些重要行动、关键对话、显著的心理变化或重要的成长/转变？
-    *   是否有新登场的重要角色？他们的初步形象、作用和潜力如何？
-    *   角色之间的关系（联盟、冲突、情感等）有无新的发展或变化？
-3.  **设定与世界观深化**：
-    *   是否有新的世界观设定、能力体系、重要物品、关键地点或历史背景被揭示或进一步阐释？
-    *   这些新设定如何丰富故事的深度和广度，或为未来情节埋下伏笔？
-4.  **伏笔、线索与悬念**：
-    *   本分块中是否埋下了新的伏笔，或回收/发展了旧的线索？
-    *   是否有新的悬念产生，或者旧的悬念得到解答或进一步发展？这些对整体故事有何潜在影响？
-5.  **情绪与氛围营造**：本分块营造的主要情绪基调或氛围是什么（例如：紧张、悬疑、轻松、悲伤、激昂等）？作者是如何通过描写、对话、情节节奏等手段来营造和强化这种氛围的？
+    userMessage += `\n\n请在“analysis”字段中，详细描述此分块的主要内容，侧重以下方面：
+1.  **关键情节进展**：发生了哪些重要事件？剧情如何推进？
+2.  **角色动态与发展**：主要角色有哪些重要行动、对话或心理变化？有无新登场的重要角色？
+3.  **设定与世界观深化**：是否有新的世界观设定、能力体系、重要物品等被揭示？
+4.  **伏笔、线索与悬念**：是否埋下新伏笔或回收旧线索？有无新悬念产生？
+5.  **情绪与氛围营造**：本分块营造的主要情绪基调是什么？
 
-请提取此分块中出现的“关键实体”。重点关注那些新引入的、或在本分块中有显著发展/变化的实体，以及代表主要情节转折点、重要设定或核心矛盾的元素。例如：重要人名（包括其身份/称号）、地名、组织机构名、特殊物品名、独特功法/技能名称、核心概念/理论、重大事件/冲突的概括性名称。
+请提取此分块中出现的“关键实体”。
+每个实体必须包含 "name", "type", 和 "context"。
+- name: 实体名称
+- type: 从 ['角色', '地点', '组织', '物品', '功法技能', '核心概念', '关键冲突', '重大事件'] 中选择一个最合适的类型。
+- context: 用一句话简要说明该实体在本分块中首次出现、有显著发展，或代表了主要情节转折点。
 
-请以指定的、严格符合规范的 JSON 格式回应。在 JSON 的字符串值中，确保正确转义特殊字符（例如换行符为 \\n，双引号为 \\"，反斜杠为 \\\\）。JSON 结构：{"summary": "...", "analysis": "...", "extractedEntities": ["实体A", "事件B"]}\n\n--- 分块内容开始 ---\n${chunkContent}\n--- 分块内容结束 ---`;
+请以指定的、严格符合规范的 JSON 格式回应。
+JSON 结构：{"summary": "...", "analysis": "...", "extractedEntities": [{"name": "实体A", "type": "类型", "context": "上下文..."}, ...]}\n\n--- 分块内容开始 ---\n${chunkContent}\n--- 分块内容结束 ---`;
     
     const contents: Content[] = [{ role: "user", parts: [{ text: userMessage }] }];
 
