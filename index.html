@@ -127,12 +127,37 @@
       border-left-color: var(--clr-cyan-500);
       color: var(--clr-slate-400);
       font-style: italic;
-      padding-left: 1em;
+      padding: 0.5em 1em;
       border-left-width: 4px;
       background-color: rgba(34, 211, 238, 0.05);
       border-radius: 0 8px 8px 0;
+      margin-left: 0;
+      margin-right: 0;
     }
     .prose-custom ul > li::marker { color: var(--clr-cyan-400); }
+    .prose-custom a { color: var(--clr-cyan-400); text-decoration: none; }
+    .prose-custom a:hover { text-decoration: underline; color: var(--clr-cyan-300); }
+    .prose-custom code { color: var(--clr-teal-300); background-color: rgba(45, 212, 191, 0.1); padding: 0.2em 0.4em; border-radius: 4px; }
+    .prose-custom pre { background-color: var(--clr-slate-900); padding: 1em; border-radius: 8px; border: 1px solid var(--clr-slate-800); }
+    
+    /* Chunk Matrix Styles */
+    .chunk-matrix-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(12px, 1fr));
+        gap: 4px;
+    }
+    .chunk-matrix-cell {
+        width: 100%;
+        padding-bottom: 100%; /* For aspect ratio 1:1 */
+        border-radius: 3px;
+        transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+    .chunk-matrix-cell:hover {
+        transform: scale(1.2);
+        z-index: 10;
+        box-shadow: 0 0 8px rgba(34, 211, 238, 0.5);
+    }
+
   </style>
 <script type="importmap">
 {
@@ -141,7 +166,9 @@
     "react": "https://esm.sh/react@^19.1.0",
     "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
     "@google/genai": "https://esm.sh/@google/genai@^1.6.0",
-    "webworker": "https://aistudiocdn.com/webworker@^0.8.4"
+    "webworker": "https://aistudiocdn.com/webworker@^0.8.4",
+    "react-markdown": "https://esm.sh/react-markdown@^9.0.1",
+    "remark-gfm": "https://esm.sh/remark-gfm@^4.0.0"
   }
 }
 </script>

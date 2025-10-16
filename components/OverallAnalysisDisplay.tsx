@@ -1,6 +1,7 @@
 import React from 'react';
 import { CopyToClipboardButton } from './CopyToClipboardButton';
 import { ExportButton } from './ExportButton'; 
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface OverallAnalysisDisplayProps {
   analysis: string | null;
@@ -28,9 +29,7 @@ export const OverallAnalysisDisplay: React.FC<OverallAnalysisDisplayProps> = Rea
           />
         </div>
       </div>
-      <div className="prose prose-custom max-w-none prose-lg whitespace-pre-wrap leading-relaxed">
-        {analysis}
-      </div>
+      <MarkdownRenderer markdownContent={analysis} />
     </div>
   );
 });

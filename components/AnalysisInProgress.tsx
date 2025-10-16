@@ -8,6 +8,8 @@ import { ErrorDisplay } from './ErrorDisplay';
 import { ApiLimitWarning } from './ApiLimitWarning';
 import { ChunkItem } from './ChunkItem';
 import { RateLimitOverrideInput } from './RateLimitOverrideInput';
+import { LiveEntityTracker } from './LiveEntityTracker';
+import { ChunkMatrix } from './ChunkMatrix';
 
 interface AnalysisInProgressProps {
   state: AppState;
@@ -62,6 +64,7 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
             </div>
             <ProgressBar progress={progress.percentage} />
             <p className="text-center text-slate-400 text-2xl font-mono tracking-wider">{progress.current} / {progress.total}</p>
+            <ChunkMatrix chunks={state.chunks} totalChunks={state.totalChunksToProcess} />
         </div>
       )}
       
@@ -71,6 +74,8 @@ export const AnalysisInProgress: React.FC<AnalysisInProgressProps> = ({
         totalChunks={state.totalChunksToProcess}
         analysisMode={state.analysisMode}
       />
+
+      <LiveEntityTracker entities={state.allKnownEntities} />
       
       {state.error && state.appStatus !== AppOverallStatus.PAUSED_RATE_LIMITED && <ErrorDisplay message={state.error} onClear={onClearError} />}
 
