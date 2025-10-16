@@ -35,7 +35,7 @@ export const useFileProcessor = (callbacks: FileProcessorCallbacks) => {
     killWorker();
     setWorkerLogs([]);
 
-    workerRef.current = new Worker(new URL('../public/fileProcessor.worker.ts', import.meta.url), { type: 'module' });
+    workerRef.current = new Worker('/public/fileProcessor.worker.ts', { type: 'module' });
 
     workerRef.current.onmessage = (event) => {
       const { type, error, message } = event.data;
