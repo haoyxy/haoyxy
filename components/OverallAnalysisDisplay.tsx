@@ -4,13 +4,13 @@ import { ExportButton } from './ExportButton';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface OverallAnalysisDisplayProps {
-  analysis: string | null;
+  markdownContent: string | null;
   title: string; 
   fileNameForExport?: string;
 }
 
-export const OverallAnalysisDisplay: React.FC<OverallAnalysisDisplayProps> = React.memo(({ analysis, title, fileNameForExport }) => {
-  if (!analysis) return null;
+export const OverallAnalysisDisplay: React.FC<OverallAnalysisDisplayProps> = React.memo(({ markdownContent, title, fileNameForExport }) => {
+  if (!markdownContent) return null;
 
   const defaultExportFilename = fileNameForExport || `${title.replace(/\s+/g, '_')}_report.txt`;
 
@@ -21,15 +21,15 @@ export const OverallAnalysisDisplay: React.FC<OverallAnalysisDisplayProps> = Rea
           {title} 
         </h2>
         <div className="flex space-x-3 mt-4 sm:mt-0">
-          <CopyToClipboardButton textToCopy={analysis} displayText="复制报告" />
+          <CopyToClipboardButton textToCopy={markdownContent} displayText="复制报告" />
           <ExportButton 
-            contentToExport={analysis} 
+            contentToExport={markdownContent} 
             defaultFilename={defaultExportFilename}
             buttonText="导出报告"
           />
         </div>
       </div>
-      <MarkdownRenderer markdownContent={analysis} />
+      <MarkdownRenderer markdownContent={markdownContent} />
     </div>
   );
 });

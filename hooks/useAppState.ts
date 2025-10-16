@@ -25,6 +25,7 @@ const initialState: AppState = {
   allKnownEntities: new Map<string, ExtractedEntity>(),
   analysisIdentifier: null,
   lastSuccessfullyProcessedChunkOrder: -1,
+  chunkingProgress: null,
 };
 
 const scrollToTop = () => {
@@ -52,10 +53,14 @@ export const useAppState = (initialGeminiAi: GoogleGenAI | null) => {
         ...prev,
         actualTotalChunksInFile: actualTotalChunks,
         totalChunksToProcess: totalToProcess,
-        appStatus: AppOverallStatus.READING_CHUNKS,
+        appStatus: AppOverallStatus.ANALYZING_CHUNKS,
         currentProcessingChunkOrder: 0,
         chunks: [],
+        chunkingProgress: 0, // Start progress at 0
       }));
+    },
+    onChunkingProgress: (progress) => {
+        setState(prev => ({ ...prev, chunkingProgress: progress }));
     },
     onFirstChunk: (firstChunk) => {
       let chatInstance = null;
@@ -82,6 +87,7 @@ export const useAppState = (initialGeminiAi: GoogleGenAI | null) => {
         appStatus: nextStatus,
         currentChatInstance: chatInstance,
         error: startError,
+        chunkingProgress: 100, // Mark chunking as complete
       }));
     },
     onChunkBatch: (newChunks) => {
@@ -95,7 +101,7 @@ export const useAppState = (initialGeminiAi: GoogleGenAI | null) => {
         if (prev.chunks.length === 0 && totalProcessed === 0) {
           return { ...prev, error: "文件已处理，但未生成任何文本分块。可能是文件内容为空或无法识别。", appStatus: AppOverallStatus.ERROR };
         }
-        return prev;
+        return { ...prev, chunkingProgress: 100 }; // Ensure it ends at 100
       });
     },
   }), [state.analysisMode, currentAiClient]);

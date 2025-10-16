@@ -52,7 +52,7 @@ export const AnalysisCompleted: React.FC<AnalysisCompletedProps> = ({ state, onR
     <div className="space-y-8">
       <BackButton onClick={onReset} text="分析新小说" />
       <OverallAnalysisDisplay
-        analysis={analysis}
+        markdownContent={analysis}
         title={title}
         fileNameForExport={fileNameForExport}
       />

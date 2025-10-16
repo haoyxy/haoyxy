@@ -7,6 +7,7 @@ const MAMMOTH_SCRIPT_URL = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0
 export interface FileProcessorCallbacks {
   onError: (errorMessage: string) => void;
   onChunkingStart: (actualTotalChunks: number, totalToProcess: number) => void;
+  onChunkingProgress: (progress: number) => void;
   onFirstChunk: (chunk: NovelChunk) => void;
   onChunkBatch: (chunks: NovelChunk[]) => void;
   onCompleted: (actualTotalChunks: number, totalProcessed: number, encoding: string) => void;
@@ -35,7 +36,10 @@ export const useFileProcessor = (callbacks: FileProcessorCallbacks) => {
     killWorker();
     setWorkerLogs([]);
 
-    workerRef.current = new Worker('/public/fileProcessor.worker.ts', { type: 'module' });
+    // FIX: Removed `{ type: 'module' }` to instantiate a classic worker.
+    // This is critical because the worker uses `importScripts()`, which is not
+    // available in module workers, causing an immediate failure on initialization.
+    workerRef.current = new Worker('/public/fileProcessor.worker.ts');
 
     workerRef.current.onmessage = (event) => {
       const { type, error, message } = event.data;
@@ -50,6 +54,9 @@ export const useFileProcessor = (callbacks: FileProcessorCallbacks) => {
           break;
         case 'chunking_started':
           callbacks.onChunkingStart(event.data.actualTotalChunksInFile, event.data.totalChunksToProcess);
+          break;
+        case 'chunking_progress':
+          callbacks.onChunkingProgress(event.data.progress);
           break;
         case 'first_chunk': {
           const { chunkBuffer, order } = event.data;

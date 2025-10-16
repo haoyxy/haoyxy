@@ -38,7 +38,7 @@ export const FileUploadArea: React.FC<FileUploadAreaProps> = React.memo(({ onFil
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
+          accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
           className="hidden"
           disabled={disabled}
           aria-label="选择小说文件进行上传"
@@ -53,7 +53,10 @@ export const FileUploadArea: React.FC<FileUploadAreaProps> = React.memo(({ onFil
           </svg>
           选择文件
         </button>
-        <p className="mt-4 text-sm text-center text-slate-500">支持格式：.txt, .doc, .docx。支持断点续传。</p>
+        <p className="mt-4 text-sm text-center text-slate-500">
+          支持格式：.txt, .docx。支持断点续传。<br/>
+          <strong className="text-amber-400">注意：不支持旧版 .doc 格式，请先另存为 .docx 或 .txt。</strong>
+        </p>
       </div>
 
       <div className="flex items-center w-full">

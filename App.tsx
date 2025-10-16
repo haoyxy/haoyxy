@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppState } from './hooks/useAppState';
 import { AppOverallStatus } from './types';
@@ -13,6 +14,7 @@ import { ErrorView } from './components/ErrorView';
 import { CancelledScreen } from './components/CancelledScreen';
 import { Spinner } from './components/Spinner';
 import { BackButton } from './components/BackButton';
+import { PreparingAnalysisView } from './components/PreparingAnalysisView';
 
 
 const APP_PERSISTENCE_VERSION = "1.0.1";
@@ -85,22 +87,25 @@ const App: React.FC = () => {
         return <ModeSelector onModeSelect={handleModeSelect} workerLogs={workerLogs} />;
 
       case AppOverallStatus.MODE_SELECTED:
-      case AppOverallStatus.PREPARING_ANALYSIS:
         return (
             <div className="space-y-6">
                 <BackButton onClick={() => handleReset(false)} text="返回选择模式" />
-                {isPreparing && (
-                    <div className="text-center p-6 flex flex-col items-center justify-center space-y-4">
-                        <Spinner size="lg" />
-                        <p className="text-slate-400 font-semibold text-lg">正在准备分析，请稍候...</p>
-                        <p className="text-slate-500 text-sm">正在读取文件并进行智能分块...</p>
-                    </div>
-                )}
                 <FileUploadArea
                     onFileSelected={handleFileSelected}
                     onTextSubmit={handleTextSubmit}
-                    disabled={!geminiAi || isPreparing}
+                    disabled={!geminiAi}
                 />
+            </div>
+        );
+        
+      case AppOverallStatus.PREPARING_ANALYSIS:
+        return (
+            <div className="space-y-6">
+                 <BackButton onClick={() => handleReset(false)} text="取消准备" />
+                 <PreparingAnalysisView 
+                    fileName={state.fileName} 
+                    progress={state.chunkingProgress} 
+                 />
             </div>
         );
       
@@ -124,6 +129,7 @@ const App: React.FC = () => {
           />
         );
 
+// FIX: Corrected typo in enum member name for the paused status.
       case AppOverallStatus.PAUSED_AWAITING_RESUME:
         return (
           <PausedScreen 

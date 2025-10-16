@@ -45,6 +45,7 @@ export interface AppState {
   allKnownEntities: Map<string, ExtractedEntity>;
   analysisIdentifier: string | null; // Unique ID for the current analysis task (filename/hash + mode)
   lastSuccessfullyProcessedChunkOrder: number; // To track resume point
+  chunkingProgress: number | null; // Progress of the worker chunking the file (0-100)
 }
 
 export enum AppOverallStatus {
